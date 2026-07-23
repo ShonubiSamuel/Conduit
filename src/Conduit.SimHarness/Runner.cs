@@ -107,15 +107,12 @@ namespace Conduit.SimHarness
                 foreach (var ev in engine.AdvanceTick())
                 {
                     if (ev is Engine.Events.SummonerDamaged sd) faceTaken[sd.Player.Value] += sd.Amount;
-                    else if (ev is Engine.Events.AttackVolleyResolved vol)
-                        foreach (var atk in vol.Attacks)
-                        {
-                            totalAttacks++;
-                            if (atk.TargetKind == TargetKind.Monster)
-                            {
-                                // attacker's owner dealt monster damage; find owner via field lookup is gone, so attribute by sign later — approximate: credit both sides' monster dmg by attacker not tracked here
-                            }
-                        }
+                    else if (ev is Engine.Events.AbilityResolved ar)
+                    {
+                        totalAttacks++;
+                        foreach (var h in ar.Hits) monsterDealt[0] += h.Dealt;   // [0] = total creature dmg
+                    }
+                    else if (ev is Engine.Events.MonsterDied) monsterDealt[1]++;   // [1] = deaths
                 }
 
                 if (engine.CurrentTick % snapshotEvery == 0)

@@ -39,6 +39,19 @@ namespace Conduit.Engine.Core
         public int HashIntervalTicks { get; init; } = 100;
         public int AmbushRevealBp { get; init; } = 20000;
 
+        // ── Ability-driven combat (combat-spec.md) — all balance hooks, no designed content ──
+        public int ArenaWidthMu { get; init; } = 4000;         // 4 m
+        public int ArenaHeightMu { get; init; } = 3000;        // 3 m
+        public int SummonerOffsetMu { get; init; } = 1500;     // summoners at (0, ∓1500)
+        public int DefaultBodyRadiusMu { get; init; } = 150;
+        public int ArriveToleranceMu { get; init; } = 80;      // "close enough" for movement goals
+        public int AiReevalTicks { get; init; } = 10;          // max ticks between AI re-decisions
+        public int HpScale { get; init; } = 1;                 // big-HP attrition hook; content authors HP directly in v0
+        public int RecallWindupTicks { get; init; } = 30;      // arrival→hand delay (still killable)
+        public int ReserveRegenPerInterval { get; init; } = 1; // HP regained per interval while in reserve
+        public int ReserveRegenIntervalTicks { get; init; } = 20;
+        public int DeployCostMilli { get; init; } = 0;         // redeploy cost from reserve (v0: free)
+
         public static DuelConfig Default { get; } = new DuelConfig();
     }
 }

@@ -27,11 +27,19 @@ dotnet run --project src/Conduit.SimHarness -- run --duels 500 --matchup aggro:w
 
 Fixed 20 Hz tick · integer-only math (milli-energy, basis points, Bresenham accumulators) · engine-owned PCG32 · no ambient environment in the engine · deterministic iteration · simultaneous combat resolution · determinism verified in CI (same-seed, cross-OS, golden replays).
 
+## Combat model
+
+Combat follows [combat-model.md](docs/design/xr-card-battle-combat-model.md) v0.2 (commander + intelligent creatures), implemented per [combat-spec.md](docs/design/xr-card-battle-combat-spec.md): continuous fixed-point positions (milli-units) as sim truth, a spatial-hash grid for queries, creatures carrying **ability kits** driven by a deterministic **AI priority function** (range bands / threat density / facing), a **commit → wind-up (telegraph) → resolve → recover** pipeline, and **Recall → reserve → redeploy** as the save-before-death loop. Mutual damage is emergent (two agents attacking), not a rule.
+
+## This is engine, not content
+
+The card set in `content/cards/_fixtures.json` is **generic engine test fixtures** (neutral placeholder creatures/numbers) used only to exercise the engine, AI, and sims. Real creatures, abilities, elements, and balance numbers are designed later on top of this engine. `HpScale = 1` in v0 (a documented balance hook); fixtures author HP directly.
+
 ## v0 known deviations / TODOs
 
 - Replay is in-memory + `Verify()`; the `.cvr` binary file format is specified (spec §8) but not yet serialized to disk.
-- `ModifyStats`/`Hex` status expiry does not yet revert the stat delta (noted in code; lands with the status rework).
+- No positional bodyblocking yet: a creature ordered to attack the summoner paths to it directly; how defense *gates* a push (overflow / lane-blocking) is deferred game design. The engine supports directive-driven targeting generically.
+- `ModifyStats`/`Hex` attach a status but don't yet modify a creature's ability output (status rework).
 - Torrent stores no killer attribution yet (consumed only by M8 Reactions — safe to defer).
-- Spatial model is minimal: zones exist and Defend/blocking works, but auto-acquire ignores zone adjacency.
-- Card files are one-per-Aspect arrays (not one-per-card) for authoring convenience; the loader accepts both.
-- Deck legality runs in `Proto` mode (copies unrestricted) until the pool exceeds ~10 distinct cards per Aspect; `Strict` mode is implemented and tested against the canonical rules.
+- Balance: fixture numbers are placeholders; duels are decisive but untuned. Mirror shows a mild EntityId-tie fairness bias to calibrate later.
+- Deck legality runs in `Proto` mode; `Strict` mode is implemented and tested against the canonical rules.

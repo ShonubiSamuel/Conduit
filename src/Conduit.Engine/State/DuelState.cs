@@ -25,13 +25,35 @@ namespace Conduit.Engine.State
         public PlayerId Owner;
         public CardDefId Def;
         public CardInstanceId Card;      // None for tokens
-        public int Atk, Hp, MaxHp;
+        public int Hp, MaxHp;
         public int WardPool;             // Ward keyword absorb pool
         public FieldZone Zone;
         public Directive Directive = Directive.AttackAuto;
-        public int NextAttackTick;
         public bool FaceDown;            // Ambush
         public List<StatusInstance> Statuses = new List<StatusInstance>();
+
+        // ── ability-driven combat runtime (combat-spec §5) ──
+        public FxVec2 Pos;
+        public FxVec2 Facing = new FxVec2(0, 1000);
+        public FxVec2 Goal;
+        public int MoveSpeed;
+        public ActionState Action = ActionState.Idle;
+        public int ActionUntilTick;      // end of WindingUp / Recovering / recall
+        public int ActiveAbilityIndex = -1;
+        public TargetRef CommittedTarget;    // target locked at commit; resolved after wind-up
+        public int NextReevalTick;
+        public bool Recalling;
+        public int RecallReadyTick = -1;     // set on arrival at summoner; recall completes at this tick
+        public int[] CooldownUntil = System.Array.Empty<int>();   // per ability
+    }
+
+    /// <summary>A creature pulled off the field via Recall — heals here, can be redeployed (combat-model §6).</summary>
+    public sealed class ReserveInstance
+    {
+        public CardDefId Def;
+        public CardInstanceId Card;
+        public int Hp, MaxHp;
+        public int RegenCounter;
     }
 
     public sealed class ChannelState
@@ -68,6 +90,7 @@ namespace Conduit.Engine.State
         public List<CardInstance> Deck = new List<CardInstance>();       // [0] = top
         public List<CardInstance> Hand = new List<CardInstance>();
         public List<CardInstance> Graveyard = new List<CardInstance>();
+        public List<ReserveInstance> Reserve = new List<ReserveInstance>();  // recalled creatures, healing
         public ChannelState? Channel;
         public GuardState? Guard;
         public int[] SchoolCooldownUntil = new int[3];                   // per SpellSchool

@@ -1,0 +1,31 @@
+[
+  // ── ENGINE TEST FIXTURES — NOT game content ──
+  // Generic creatures with neutral placeholder numbers, used only to exercise the combat engine,
+  // AI, and sims. These are NOT designed creatures/abilities/elements. Real content is authored
+  // later on top of this engine. Aspect/clan values are arbitrary tags here (HpScale=1 in v0).
+
+  { "id": "test.melee",      "aspect": "Ember",   "clan": "Test", "rarity": "Common", "kind": "Monster", "cost": 2, "hp": 50, "moveSpeed": 60,
+    "abilities": [ { "id": "strike",  "damage": 8,  "rangeMax": 300,               "windup": 6,  "cooldown": 24, "recovery": 6 } ] },
+
+  { "id": "test.skirmisher", "aspect": "Gale",    "clan": "Test", "rarity": "Common", "kind": "Monster", "cost": 1, "hp": 24, "moveSpeed": 95,
+    "abilities": [ { "id": "slash",   "damage": 4,  "rangeMax": 260,               "windup": 4,  "cooldown": 14, "recovery": 4 } ] },
+
+  { "id": "test.ranged",     "aspect": "Gale",    "clan": "Test", "rarity": "Common", "kind": "Monster", "cost": 3, "hp": 32, "moveSpeed": 55,
+    "abilities": [ { "id": "shot",    "damage": 7,  "rangeMin": 400, "rangeMax": 1400, "windup": 12, "cooldown": 36, "recovery": 8 } ] },
+
+  { "id": "test.artillery",  "aspect": "Tide",    "clan": "Test", "rarity": "Rare",   "kind": "Monster", "cost": 4, "hp": 40, "moveSpeed": 30,
+    "abilities": [ { "id": "barrage", "damage": 9,  "rangeMin": 500, "rangeMax": 1800, "windup": 24, "cooldown": 72, "recovery": 14, "shape": "Circle", "shapeParam": 450 } ] },
+
+  { "id": "test.bulwark",    "aspect": "Bastion", "clan": "Test", "rarity": "Common", "kind": "Monster", "cost": 2, "hp": 90, "moveSpeed": 35,
+    "keywords": [ { "k": "Bulwark" } ],
+    "abilities": [ { "id": "bash",    "damage": 5,  "rangeMax": 300,               "windup": 8,  "cooldown": 30, "recovery": 8 } ] },
+
+  { "id": "test.brute",      "aspect": "Bastion", "clan": "Test", "rarity": "Rare",   "kind": "Monster", "cost": 4, "hp": 70, "moveSpeed": 45,
+    "abilities": [ { "id": "smash",   "damage": 12, "rangeMax": 320,               "windup": 14, "cooldown": 40, "recovery": 12 } ] },
+
+  { "id": "test.token",      "aspect": "Verdant", "clan": "Test", "rarity": "Token",  "kind": "Monster", "cost": 0, "hp": 12, "moveSpeed": 70,
+    "abilities": [ { "id": "peck",    "damage": 2,  "rangeMax": 220,               "windup": 4,  "cooldown": 18, "recovery": 4 } ] },
+
+  { "id": "test.mend",       "aspect": "Bastion", "clan": "Test", "rarity": "Common", "kind": "Spell",   "cost": 2, "hp": 0, "school": "Defense",
+    "effects": [ { "op": "Heal", "amount": 12 } ] }
+]

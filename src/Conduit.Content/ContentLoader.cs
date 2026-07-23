@@ -19,6 +19,20 @@ namespace Conduit.Content
         public int durationTicks { get; set; }
         public string? @ref { get; set; }
     }
+    public sealed class AbilityJson
+    {
+        public string id { get; set; } = "";
+        public int damage { get; set; }
+        public int rangeMin { get; set; }
+        public int rangeMax { get; set; } = 300;
+        public int windup { get; set; }
+        public int cooldown { get; set; }
+        public int recovery { get; set; }
+        public string shape { get; set; } = "Single";
+        public int shapeParam { get; set; }
+        public string pref { get; set; } = "Any";
+        public int cost { get; set; }
+    }
     public sealed class CardJson
     {
         public string id { get; set; } = "";
@@ -27,8 +41,10 @@ namespace Conduit.Content
         public string rarity { get; set; } = "Common";
         public string kind { get; set; } = "Monster";
         public int cost { get; set; }                  // whole energy; ×1000 at load
-        public int atk { get; set; }
         public int hp { get; set; }
+        public List<AbilityJson> abilities { get; set; } = new();
+        public int moveSpeed { get; set; } = 60;
+        public int bodyRadius { get; set; } = 150;
         public List<KeywordJson> keywords { get; set; } = new();
         public List<EffectJson> effects { get; set; } = new();
         public string school { get; set; } = "Offense";
@@ -67,6 +83,10 @@ namespace Conduit.Content
                 (EffectOpType)Enum.Parse(typeof(EffectOpType), e.op, ignoreCase: true),
                 (EffectTargetKind)Enum.Parse(typeof(EffectTargetKind), e.target, ignoreCase: true),
                 e.amount, e.durationTicks, e.@ref)).ToList();
+            var abilities = j.abilities.Select(a => new AbilityDef(
+                a.id, a.damage, a.rangeMin, a.rangeMax, a.windup, a.cooldown, a.recovery,
+                (AoeShape)Enum.Parse(typeof(AoeShape), a.shape, true), a.shapeParam,
+                (TargetPref)Enum.Parse(typeof(TargetPref), a.pref, true), DamageType.Generic, a.cost)).ToList();
             var tiers = CastTierMask.All;
             if (j.tiers != null)
             {
@@ -80,8 +100,9 @@ namespace Conduit.Content
                 j.clan,
                 (Rarity)Enum.Parse(typeof(Rarity), j.rarity, true),
                 (CardKind)Enum.Parse(typeof(CardKind), j.kind, true),
-                j.cost * 1000, j.atk, j.hp,
+                j.cost * 1000, j.hp, abilities,
                 keywords, effects,
+                j.moveSpeed, j.bodyRadius,
                 (SpellSchool)Enum.Parse(typeof(SpellSchool), j.school, true),
                 tiers);
         }

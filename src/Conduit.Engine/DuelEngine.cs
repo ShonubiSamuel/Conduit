@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Conduit.Engine.Ai;
 using Conduit.Engine.Core;
 using Conduit.Engine.Events;
 using Conduit.Engine.Hash;
 using Conduit.Engine.Intents;
 using Conduit.Engine.Replay;
 using Conduit.Engine.Rng;
+using Conduit.Engine.Spatial;
 using Conduit.Engine.State;
 
 namespace Conduit.Engine
@@ -121,7 +123,7 @@ namespace Conduit.Engine
             {
                 Timers(t);        // 3
                 CastCompletion(t);// 4
-                Combat(t);        // 5
+                CreatureAct(t);   // 5 — movement + AI + ability pipeline (combat-spec §8)
                 Deaths(t);        // 6
                 WinCheck(t);      // 7
             }
@@ -183,6 +185,20 @@ namespace Conduit.Engine
                     var m = _s.Field.FirstOrDefault(x => x.Id == cm.Monster);
                     if (m == null) return RejectReason.UnknownEntity;
                     if (m.Owner != env.Actor) return RejectReason.NotYourCard;
+                    return null;
+                }
+                case Recall rc:
+                {
+                    var m = _s.Field.FirstOrDefault(x => x.Id == rc.Monster);
+                    if (m == null) return RejectReason.UnknownEntity;
+                    if (m.Owner != env.Actor) return RejectReason.NotYourCard;
+                    return null;
+                }
+                case DeployReserve dr:
+                {
+                    if (dr.ReserveSlot < 0 || dr.ReserveSlot >= ps.Reserve.Count) return RejectReason.UnknownEntity;
+                    if (_s.Field.Count(m => m.Owner == env.Actor) >= _cfg.BoardCap) return RejectReason.BoardFull;
+                    if (ps.EnergyMilli < _cfg.DeployCostMilli) return RejectReason.InsufficientEnergy;
                     return null;
                 }
                 case Intents.Guard:
@@ -259,12 +275,29 @@ namespace Conduit.Engine
                 {
                     var m = _s.Field.First(x => x.Id == cm.Monster);
                     m.Directive = cm.D;
-                    if (cm.D.Kind == DirectiveKind.Sacrifice) m.Hp = 0;           // resolved in phase 6
-                    else if (cm.D.Kind == DirectiveKind.Return)
-                    {
-                        _s.Field.Remove(m);
-                        if (!m.Card.IsNone) ps.Hand.Add(new CardInstance(m.Card, m.Def));
-                    }
+                    m.Action = ActionState.Idle;        // re-decide next tick under the new directive
+                    m.NextReevalTick = t;
+                    if (cm.D.Kind == DirectiveKind.Sacrifice) m.Hp = 0;   // resolved in phase 6
+                    break;
+                }
+                case Recall rc:
+                {
+                    var m = _s.Field.First(x => x.Id == rc.Monster);
+                    m.Directive = Directive.Retreat;    // move to summoner, then leave the field
+                    m.Recalling = true;
+                    m.Action = ActionState.Retreating;
+                    m.Goal = SummonerPos(m.Owner);
+                    break;
+                }
+                case DeployReserve dr:
+                {
+                    var r = ps.Reserve[dr.ReserveSlot];
+                    ps.Reserve.RemoveAt(dr.ReserveSlot);
+                    ps.EnergyMilli -= _cfg.DeployCostMilli;
+                    if (_cfg.DeployCostMilli > 0) _events.Add(new EnergyChanged(t, env.Actor, -_cfg.DeployCostMilli, ps.EnergyMilli));
+                    var def = _content.Get(r.Def);
+                    var m = SpawnMonster(env.Actor, def, r.Card, dr.Slot, t, startHp: r.Hp);
+                    _events.Add(new CreatureDeployed(t, env.Actor, m.Id, def.Id, dr.Slot, m.Hp));
                     break;
                 }
                 case Intents.Guard:
@@ -293,24 +326,47 @@ namespace Conduit.Engine
             }
         }
 
-        private void SpawnMonster(PlayerId owner, CardDef def, CardInstanceId card, FieldZone zone, int t)
+        private MonsterInstance SpawnMonster(PlayerId owner, CardDef def, CardInstanceId card, FieldZone zone, int t, int startHp = -1)
         {
+            int hp = startHp >= 0 ? startHp : def.Hp * _cfg.HpScale;
+            int maxHp = def.Hp * _cfg.HpScale;
             var m = new MonsterInstance
             {
                 Id = new EntityId(_s.NextEntityId++),
                 Owner = owner, Def = def.Id, Card = card,
-                Atk = def.Atk, Hp = def.Hp, MaxHp = def.Hp,
+                Hp = hp, MaxHp = maxHp,
                 WardPool = def.KeywordX(Keyword.Ward),
                 Zone = zone,
                 FaceDown = def.Has(Keyword.Ambush),
-                NextAttackTick = t + AttackPeriod(def),
+                MoveSpeed = def.MoveSpeedMuPerTick,
+                CooldownUntil = new int[def.Abilities.Count],
             };
+            m.Pos = SpawnPosition(owner, zone);
+            int sign = owner.Value == 0 ? -1 : 1;
+            m.Facing = new FxVec2(0, -sign * 1000);   // face the enemy end
+            m.Goal = m.Pos;
             _s.Field.Add(m);   // NextEntityId is monotonic → list stays sorted by EntityId (D5)
-            _events.Add(new SummonResolved(t, owner, m.Id, def.Id, zone, m.FaceDown, m.Atk, m.Hp));
+            _events.Add(new SummonResolved(t, owner, m.Id, def.Id, zone, m.FaceDown, m.Hp));
+            return m;
         }
 
-        private int AttackPeriod(CardDef def) =>
-            def.Has(Keyword.Swift) ? _cfg.SwiftAttackPeriodTicks : _cfg.AttackPeriodTicks;
+        private FxVec2 SpawnPosition(PlayerId owner, FieldZone zone)
+        {
+            int sign = owner.Value == 0 ? -1 : 1;
+            int forward = sign * (_cfg.SummonerOffsetMu - 500);   // just in front of the summoner
+            int count = _s.Field.Count(x => x.Owner == owner);
+            int spread = ((count % 4) - 1) * 300;                  // fan out so bodies don't stack
+            int side = zone switch
+            {
+                FieldZone.LeftFlank => -_cfg.ArenaWidthMu / 4,
+                FieldZone.RightFlank => _cfg.ArenaWidthMu / 4,
+                _ => 0,
+            };
+            return new FxVec2(side + spread, forward);
+        }
+
+        private FxVec2 SummonerPos(PlayerId p) =>
+            new FxVec2(0, (p.Value == 0 ? -1 : 1) * _cfg.SummonerOffsetMu);
 
         // ── Phase 3: timers ───────────────────────────────────────────────────────
 
@@ -363,6 +419,11 @@ namespace Conduit.Engine
 
                 // echo window pruning
                 ps.RecentCasts.RemoveAll(rc => t - rc.Tick > _cfg.EchoWindowTicks);
+
+                // reserve (recalled) creatures heal while off the field (combat-model §6)
+                if (t % _cfg.ReserveRegenIntervalTicks == 0)
+                    foreach (var r in ps.Reserve)
+                        if (r.Hp < r.MaxHp) r.Hp = Math.Min(r.MaxHp, r.Hp + _cfg.ReserveRegenPerInterval);
             }
 
             // statuses + Regrow (per monster, sorted order is inherent — Field is EntityId-sorted)
@@ -435,16 +496,14 @@ namespace Conduit.Engine
                 case EffectOpType.ModifyStats:
                 case EffectOpType.Hex:
                 {
+                    // In the ability model a creature has no single ATK; stat modifiers attach as a status
+                    // (a generic hook — how it modifies a creature's ability output is content/rework territory).
                     var m = ResolveMonster(target);
-                    if (m != null)
+                    if (m != null && op.DurationTicks > 0)
                     {
-                        m.Atk = Math.Max(0, m.Atk + amount);
-                        if (op.DurationTicks > 0)
-                        {
-                            var st = new StatusInstance { Id = "mod.atk", Magnitude = amount, UntilTick = t + op.DurationTicks };
-                            m.Statuses.Add(st);   // NOTE v0: expiry does not yet revert; revert lands with the status rework
-                            _events.Add(new StatusApplied(t, m.Id, st.Id, amount, st.UntilTick));
-                        }
+                        var st = new StatusInstance { Id = "mod.dmg", Magnitude = amount, UntilTick = t + op.DurationTicks };
+                        m.Statuses.Add(st);
+                        _events.Add(new StatusApplied(t, m.Id, st.Id, amount, st.UntilTick));
                     }
                     break;
                 }
@@ -474,127 +533,213 @@ namespace Conduit.Engine
         private MonsterInstance? ResolveMonster(TargetRef tr) =>
             tr.Kind == TargetKind.Monster ? _s.Field.FirstOrDefault(m => m.Id == tr.Monster) : null;
 
-        // ── Phase 5: combat (D6 — simultaneous volley) ────────────────────────────
+        // ── Phase 5: Creature Act — movement + AI + ability pipeline (combat-spec §8) ─────
 
-        private readonly struct PendingAttack
+        private SpatialGrid BuildGrid()
         {
-            public readonly MonsterInstance Attacker;
-            public readonly MonsterInstance? TargetMonster;
-            public readonly PlayerId TargetPlayer;   // used when TargetMonster is null
-            public readonly bool AmbushReveal;
-            public PendingAttack(MonsterInstance a, MonsterInstance? tm, PlayerId tp, bool reveal)
-            { Attacker = a; TargetMonster = tm; TargetPlayer = tp; AmbushReveal = reveal; }
+            int maxRange = 0;
+            foreach (var m in _s.Field)
+                maxRange = Math.Max(maxRange, _content.Get(m.Def).MaxAbilityRange);
+            int cell = Math.Max(300, maxRange);
+            var grid = new SpatialGrid(-_cfg.ArenaWidthMu, -_cfg.ArenaHeightMu - _cfg.SummonerOffsetMu,
+                                       _cfg.ArenaWidthMu * 2, (_cfg.ArenaHeightMu + _cfg.SummonerOffsetMu) * 2, cell);
+            foreach (var m in _s.Field) if (m.Hp > 0) grid.Add(m.Id, m.Pos);   // Field is EntityId-sorted
+            return grid;
         }
 
-        private void Combat(int t)
+        private void CreatureAct(int t)
         {
-            // collect ALL attacks firing this tick, both players, in EntityId order
-            var pending = new List<PendingAttack>();
-            foreach (var m in _s.Field)
+            var grid = BuildGrid();
+            var world = new AiWorld(_cfg, _content, t, _s.Field, grid, SummonerPos(PlayerId.P0), SummonerPos(PlayerId.P1));
+
+            // snapshot the field: recall/death may mutate it; operate on live objects, skip removed ones
+            foreach (var c in _s.Field.ToArray())
             {
-                if (m.NextAttackTick > t) continue;
-                if (m.Directive.Kind != DirectiveKind.Attack) { m.NextAttackTick = t + AttackPeriod(_content.Get(m.Def)); continue; }
-                if (m.Atk <= 0) { m.NextAttackTick = t + AttackPeriod(_content.Get(m.Def)); continue; }
+                if (c.Hp <= 0 || !_s.Field.Contains(c)) continue;
 
-                var enemies = _s.Field.Where(x => x.Owner != m.Owner).ToList();  // EntityId-sorted already
-                MonsterInstance? targetMonster = null;
-                PlayerId targetPlayer = m.Owner.Opponent;
+                if (c.Recalling) { StepRecall(c, t); continue; }
 
-                // Canonical model (INDEX §3, balance §5 #5): attacks aim at the enemy SUMMONER;
-                // defending monsters intercept (one each, Bulwark two); excess overflows to face.
-                // Only an EXPLICIT CommandMonster→Attack(monster) directs a strike at a specific monster.
-                var explicitTarget = m.Directive.Target;
-                if (explicitTarget.Kind == TargetKind.Monster)
-                    targetMonster = enemies.FirstOrDefault(x => x.Id == explicitTarget.Monster);
+                switch (c.Action)
+                {
+                    case ActionState.Recovering:
+                        if (t >= c.ActionUntilTick) { c.Action = ActionState.Idle; goto case ActionState.Idle; }
+                        break;
 
-                bool reveal = m.FaceDown;
-                if (reveal) m.FaceDown = false;
+                    case ActionState.WindingUp:
+                        if (t >= c.ActionUntilTick) ResolveAbility(c, t);   // → sets Recovering
+                        break;
 
-                pending.Add(new PendingAttack(m, targetMonster, targetPlayer, reveal));
-                m.NextAttackTick = t + AttackPeriod(_content.Get(m.Def));
+                    case ActionState.Moving:
+                        StepMove(c);
+                        if (Arrived(c)) { c.Action = ActionState.Idle; goto case ActionState.Idle; }
+                        break;
+
+                    case ActionState.Idle:
+                        if (t < c.NextReevalTick) break;
+                        ApplyAiDecision(c, CreatureAi.Decide(world, c), t);
+                        break;
+                }
             }
-            if (pending.Count == 0) return;
+        }
 
-            // blocking: attacks aimed at a summoner are intercepted by that player's Defend-directive
-            // monsters — one attacker each, two for Bulwark (spec §6.6, per-defender overflow, finding #5)
-            var blockCapacity = new Dictionary<EntityId, int>();
-            foreach (var d in _s.Field.Where(x => x.Directive.Kind == DirectiveKind.Defend))
-                blockCapacity[d.Id] = _content.Get(d.Def).Has(Keyword.Bulwark) ? 2 : 1;
-
-            // snapshot pre-volley values (reads bind to snapshot — D6)
-            var hpSnap = _s.Field.ToDictionary(m => m.Id, m => m.Hp);
-            var wardSnap = _s.Field.ToDictionary(m => m.Id, m => m.WardPool);
-            var lifeSnap = new[] { _s.Players[0].Life, _s.Players[1].Life };
-
-            var records = new List<AttackRecord>();
-
-            foreach (var pa in pending)
+        private void ApplyAiDecision(MonsterInstance c, AiDecision d, int t)
+        {
+            switch (d.Kind)
             {
-                var atkDef = _content.Get(pa.Attacker.Def);
-                int raw = pa.Attacker.Atk;
-                if (pa.AmbushReveal) raw = (int)((long)raw * _cfg.AmbushRevealBp / 10000);
-
-                MonsterInstance? victim = pa.TargetMonster;
-                bool blocked = false;
-                EntityId blockerId = EntityId.None;
-
-                if (victim == null)
+                case AiKind.Commit:
                 {
-                    // attack aimed at summoner — check defenders (owned by the defending player)
-                    var defender = _s.Field.FirstOrDefault(d =>
-                        d.Owner == pa.TargetPlayer &&
-                        d.Directive.Kind == DirectiveKind.Defend &&
-                        blockCapacity.TryGetValue(d.Id, out int cap) && cap > 0);
-                    if (defender != null)
-                    {
-                        blockCapacity[defender.Id]--;
-                        victim = defender;
-                        blocked = true;
-                        blockerId = defender.Id;
-                    }
+                    var def = _content.Get(c.Def);
+                    var ab = def.Abilities[d.AbilityIndex];
+                    c.Action = ActionState.WindingUp;
+                    c.ActiveAbilityIndex = d.AbilityIndex;
+                    c.CommittedTarget = d.Target;
+                    c.ActionUntilTick = t + ab.WindupTicks;
+                    FaceToward(c, TargetPoint(d.Target, c));
+                    var (tk, tm, tp) = TargetTriple(d.Target, c);
+                    _events.Add(new AbilityCommitted(t, c.Id, ab.Id, tk, tm, tp, ab.WindupTicks));   // the telegraph
+                    break;
                 }
+                case AiKind.MoveTo:
+                    c.Action = ActionState.Moving;
+                    c.Goal = d.Goal;
+                    c.NextReevalTick = t + _cfg.AiReevalTicks;
+                    break;
+                default:
+                    c.NextReevalTick = t + _cfg.AiReevalTicks;
+                    break;
+            }
+        }
 
-                int dealt, overflow = 0;
-                if (victim != null)
-                {
-                    // ward absorbs first; damage applies to live state (deterministic order = pending order)
-                    int ward = victim.WardPool;
-                    int afterWard = Math.Max(0, raw - ward);
-                    victim.WardPool = Math.Max(0, ward - raw);
-                    int hpBefore = victim.Hp;
-                    victim.Hp -= afterWard;
-                    dealt = Math.Min(afterWard, hpBefore);
-                    int excess = Math.Max(0, afterWard - hpBefore);
-                    if (excess > 0 && atkDef.Has(Keyword.Pierce))
-                    {
-                        overflow = DamageSummonerWithGuard(victim.Owner, excess, lifeSnap, pa.Attacker.Id, t);
-                    }
-                    if (atkDef.Has(Keyword.Drain) && dealt > 0)
-                        HealSummoner(pa.Attacker.Owner, dealt / 2, t);
-                    records.Add(new AttackRecord(pa.Attacker.Id, TargetKind.Monster, victim.Id, victim.Owner,
-                                                 raw, dealt, overflow, blocked, blockerId, pa.AmbushReveal));
-                }
+        private void ResolveAbility(MonsterInstance c, int t)
+        {
+            var def = _content.Get(c.Def);
+            var ab = def.Abilities[c.ActiveAbilityIndex];
+            int dmg = ab.Damage;
+            if (c.FaceDown) { dmg = (int)((long)dmg * _cfg.AmbushRevealBp / 10000); c.FaceDown = false; }   // Ambush first strike
+
+            var hits = new List<HitRecord>();
+            var tgt = c.CommittedTarget;
+
+            if (tgt.Kind == TargetKind.Summoner)
+            {
+                int dealt = DamageSummonerWithGuard(tgt.Player, dmg, c.Id, t);
+                if (def.Has(Keyword.Drain) && dealt > 0) HealSummoner(c.Owner, dealt / 2, t);
+                hits.Add(new HitRecord(EntityId.None, tgt.Player, true, dealt, 0));
+            }
+            else
+            {
+                // primary point = committed monster's current pos (may have moved/died) else attacker forward
+                var primary = tgt.Kind == TargetKind.Monster ? _s.Field.FirstOrDefault(m => m.Id == tgt.Monster) : null;
+                FxVec2 impact = primary?.Pos ?? c.Pos;
+
+                var victims = new List<MonsterInstance>();
+                if (ab.Shape == AoeShape.Single)
+                { if (primary != null) victims.Add(primary); }
                 else
                 {
-                    dealt = DamageSummonerWithGuard(pa.TargetPlayer, raw, lifeSnap, pa.Attacker.Id, t);
-                    if (atkDef.Has(Keyword.Drain) && dealt > 0)
-                        HealSummoner(pa.Attacker.Owner, dealt / 2, t);
-                    records.Add(new AttackRecord(pa.Attacker.Id, TargetKind.Summoner, EntityId.None, pa.TargetPlayer,
-                                                 raw, dealt, 0, false, EntityId.None, pa.AmbushReveal));
+                    int radius = ab.Shape == AoeShape.Circle ? ab.ShapeParam : ab.RangeMaxMu;
+                    foreach (var id in BuildGrid().WithinRadius(impact, radius, id => IsEnemyOf(c, id)))
+                    {
+                        var m = _s.Field.First(x => x.Id == id);
+                        if (ab.Shape == AoeShape.Cone && !InCone(c, m.Pos, ab)) continue;
+                        victims.Add(m);
+                    }
+                }
+
+                foreach (var v in victims)   // EntityId order (grid returns sorted; Single is one)
+                {
+                    DamageMonster(v, dmg, c.Id, t, out int dealt);
+                    int overflow = 0;
+                    if (v.Hp < 0 && def.Has(Keyword.Pierce))
+                        overflow = DamageSummonerWithGuard(v.Owner, -v.Hp, c.Id, t);
+                    if (def.Has(Keyword.Drain) && dealt > 0) HealSummoner(c.Owner, dealt / 2, t);
+                    hits.Add(new HitRecord(v.Id, v.Owner, false, dealt, overflow));
                 }
             }
 
-            _events.Add(new AttackVolleyResolved(t, records));
+            _events.Add(new AbilityResolved(t, c.Id, ab.Id, hits));
+            c.CooldownUntil[c.ActiveAbilityIndex] = t + ab.CooldownTicks;
+            c.Action = ActionState.Recovering;
+            c.ActionUntilTick = t + ab.RecoveryTicks;
+            c.ActiveAbilityIndex = -1;
         }
 
-        /// <summary>Face damage, reduced by an active Guard using the LIFE SNAPSHOT for blockBp (danger-scaled defense).</summary>
-        private int DamageSummonerWithGuard(PlayerId target, int raw, int[] lifeSnap, EntityId source, int t)
+        private void StepMove(MonsterInstance c)
+        {
+            var delta = c.Goal - c.Pos;
+            long distSq = delta.LenSq();
+            long tol = (long)_cfg.ArriveToleranceMu * _cfg.ArriveToleranceMu;
+            if (distSq <= tol) return;
+            int dist = FxMath.ISqrt(distSq);
+            int step = Math.Min(c.MoveSpeed, dist);
+            c.Pos += delta.ScaledTo(step);
+            c.Facing = delta.ScaledTo(1000);
+        }
+
+        private bool Arrived(MonsterInstance c)
+        {
+            long tol = (long)_cfg.ArriveToleranceMu * _cfg.ArriveToleranceMu;
+            return c.Pos.DistSq(c.Goal) <= tol;
+        }
+
+        private void StepRecall(MonsterInstance c, int t)
+        {
+            c.Goal = SummonerPos(c.Owner);
+            StepMove(c);
+            if (!Arrived(c)) return;
+            if (c.RecallReadyTick < 0) { c.RecallReadyTick = t + _cfg.RecallWindupTicks; return; }  // arrival → windup
+            if (t < c.RecallReadyTick) return;                                                       // still winding up (killable)
+            // complete: field → reserve (heals there)
+            _s.Field.Remove(c);
+            var ps = _s.P(c.Owner);
+            ps.Reserve.Add(new ReserveInstance { Def = c.Def, Card = c.Card, Hp = Math.Max(1, c.Hp), MaxHp = c.MaxHp });
+            _events.Add(new CreatureRecalled(t, c.Owner, c.Id, ps.Reserve.Count - 1));
+        }
+
+        // ── combat helpers ──
+        private bool IsEnemyOf(MonsterInstance c, EntityId id)
+        {
+            var m = _s.Field.FirstOrDefault(x => x.Id == id);
+            return m != null && m.Owner != c.Owner && m.Hp > 0;
+        }
+
+        private bool InCone(MonsterInstance c, FxVec2 point, AbilityDef ab)
+        {
+            var toPoint = point - c.Pos;
+            if (toPoint.LenSq() == 0) return true;
+            long dot = c.Facing.ScaledTo(1000).Dot(toPoint.ScaledTo(1000));   // both ~1000-scaled
+            return dot >= (long)ab.ShapeParam * 1000;   // ShapeParam = cos(halfAngle)×1000 threshold
+        }
+
+        private void FaceToward(MonsterInstance c, FxVec2 point)
+        {
+            var d = point - c.Pos;
+            if (d.LenSq() != 0) c.Facing = d.ScaledTo(1000);
+        }
+
+        private FxVec2 TargetPoint(TargetRef tr, MonsterInstance c) => tr.Kind switch
+        {
+            TargetKind.Monster => _s.Field.FirstOrDefault(m => m.Id == tr.Monster)?.Pos ?? c.Pos,
+            TargetKind.Summoner => SummonerPos(tr.Player),
+            _ => c.Pos,
+        };
+
+        private (TargetKind, EntityId, PlayerId) TargetTriple(TargetRef tr, MonsterInstance c) => tr.Kind switch
+        {
+            TargetKind.Monster => (TargetKind.Monster, tr.Monster, c.Owner.Opponent),
+            TargetKind.Summoner => (TargetKind.Summoner, EntityId.None, tr.Player),
+            _ => (TargetKind.None, EntityId.None, c.Owner.Opponent),
+        };
+
+        /// <summary>Face damage, reduced by an active Guard scaled to CURRENT life (danger-scaled defense).
+        /// Abilities resolve sequentially in the ability pipeline, so current life is the correct basis.</summary>
+        private int DamageSummonerWithGuard(PlayerId target, int raw, EntityId source, int t)
         {
             var ps = _s.P(target);
             int dealt = raw;
             if (ps.Guard is GuardState g && t >= g.ActiveFromTick && t < g.UntilTick)
             {
-                int missing = _cfg.LifeMax - lifeSnap[target.Value];
+                int missing = _cfg.LifeMax - ps.Life;
                 int blockBp = Math.Min(_cfg.GuardCapBp, _cfg.GuardBaseBp + missing * _cfg.GuardBpPerMissingLife);
                 dealt = (int)((long)raw * (10000 - blockBp) / 10000);
             }
@@ -718,13 +863,21 @@ namespace Conduit.Engine
                 foreach (var cd in ps.SchoolCooldownUntil) w.I32(cd);
                 w.I32(ps.RecentCasts.Count);
                 foreach (var rc in ps.RecentCasts) { w.S(rc.Def.Value); w.I32(rc.Tick); }
+                w.I32(ps.Reserve.Count);
+                foreach (var r in ps.Reserve) { w.S(r.Def.Value); w.I32(r.Card.Value); w.I32(r.Hp); w.I32(r.MaxHp); w.I32(r.RegenCounter); }
             }
             w.I32(_s.Field.Count);
             foreach (var m in _s.Field)
             {
                 w.I32(m.Id.Value); w.I32(m.Owner.Value); w.S(m.Def.Value); w.I32(m.Card.Value);
-                w.I32(m.Atk); w.I32(m.Hp); w.I32(m.MaxHp); w.I32(m.WardPool);
-                w.I32((int)m.Zone); w.I32((int)m.Directive.Kind); w.I32(m.NextAttackTick); w.B(m.FaceDown);
+                w.I32(m.Hp); w.I32(m.MaxHp); w.I32(m.WardPool);
+                w.I32((int)m.Zone); w.I32((int)m.Directive.Kind); w.B(m.FaceDown);
+                w.I32(m.Pos.X); w.I32(m.Pos.Y); w.I32(m.Facing.X); w.I32(m.Facing.Y);
+                w.I32(m.Goal.X); w.I32(m.Goal.Y); w.I32(m.MoveSpeed);
+                w.I32((int)m.Action); w.I32(m.ActionUntilTick); w.I32(m.ActiveAbilityIndex);
+                w.I32(m.NextReevalTick); w.B(m.Recalling); w.I32(m.RecallReadyTick);
+                w.I32(m.CooldownUntil.Length);
+                foreach (var cd in m.CooldownUntil) w.I32(cd);
                 w.I32(m.Statuses.Count);
                 foreach (var st in m.Statuses) { w.S(st.Id); w.I32(st.Magnitude); w.I32(st.UntilTick); }
             }
@@ -738,16 +891,19 @@ namespace Conduit.Engine
             var me = _s.P(asSeenBy);
             var opp = _s.P(asSeenBy.Opponent);
             var hand = me.Hand.Select(c => new HandCardView(c.Id, c.Def)).ToList();
+            var reserve = me.Reserve.Select((r, i) => new ReserveView(i, r.Def, r.Hp, r.MaxHp)).ToList();
             var field = _s.Field.Select(m => new MonsterView(
                 m.Id, m.Owner == asSeenBy || !m.FaceDown ? m.Def : new CardDefId("hidden"),
-                m.Owner, m.Atk, m.Hp, m.MaxHp, m.Zone, m.Directive.Kind, m.FaceDown, m.WardPool)).ToList();
+                m.Owner, m.Hp, m.MaxHp, m.Zone, m.Directive.Kind,
+                m.Directive.Kind == DirectiveKind.Attack && m.Directive.Target.Kind == TargetKind.Summoner,
+                m.FaceDown, m.WardPool, m.Pos, m.Action)).ToList();
             bool canGuard = me.Guard == null &&
                             _s.Tick >= me.SchoolCooldownUntil[(int)SpellSchool.Defense] &&
                             me.EnergyMilli >= _cfg.GuardCostMilli;
             return new DuelView(_s.Tick, _s.Phase, _s.Result, asSeenBy,
                 me.Life, me.EnergyMilli, me.DrawCharges,
                 opp.Life, opp.EnergyMilli, opp.Hand.Count,
-                hand, field, me.Channel != null, canGuard, opp.Channel != null);
+                hand, reserve, field, me.Channel != null, canGuard, opp.Channel != null);
         }
 
         // ── Replay export (spec §8; in-memory here, file IO lives outside Engine) ──

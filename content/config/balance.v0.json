@@ -31,5 +31,17 @@
   "DeckSize": 30,
   "RegrowIntervalTicks": 100,
   "HashIntervalTicks": 100,
-  "AmbushRevealBp": 20000
+  "AmbushRevealBp": 20000,
+
+  "ArenaWidthMu": 4000,
+  "ArenaHeightMu": 3000,
+  "SummonerOffsetMu": 1500,
+  "DefaultBodyRadiusMu": 150,
+  "ArriveToleranceMu": 80,
+  "AiReevalTicks": 10,
+  "HpScale": 1,
+  "RecallWindupTicks": 30,
+  "ReserveRegenPerInterval": 1,
+  "ReserveRegenIntervalTicks": 20,
+  "DeployCostMilli": 0
 }

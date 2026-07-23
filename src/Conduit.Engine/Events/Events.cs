@@ -17,7 +17,7 @@ namespace Conduit.Engine.Events
     public sealed record CardSpent(int Tick, PlayerId Player, CardInstanceId Card) : GameEvent(Tick);   // → physical discard pouch
 
     // summoning
-    public sealed record SummonResolved(int Tick, PlayerId Owner, EntityId Monster, CardDefId Def, FieldZone Zone, bool FaceDown, int Atk, int Hp) : GameEvent(Tick);
+    public sealed record SummonResolved(int Tick, PlayerId Owner, EntityId Monster, CardDefId Def, FieldZone Zone, bool FaceDown, int Hp) : GameEvent(Tick);
 
     // casting
     public sealed record ChannelStarted(int Tick, PlayerId Player, CardDefId Def, CastTier Tier, int DurationTicks) : GameEvent(Tick);  // the telegraph
@@ -25,11 +25,12 @@ namespace Conduit.Engine.Events
     public sealed record ChannelBroken(int Tick, PlayerId Player, ChannelBreakReason Reason, int RefundMilli) : GameEvent(Tick);
     public sealed record CastResolved(int Tick, PlayerId Player, CardDefId Def, CastTier Tier, int MultiplierBp) : GameEvent(Tick);
 
-    // combat — ONE volley event per tick: all simultaneous attacks (D6)
-    public sealed record AttackRecord(
-        EntityId Attacker, TargetKind TargetKind, EntityId TargetMonster, PlayerId TargetPlayer,
-        int Raw, int Dealt, int Overflow, bool WasBlocked, EntityId Blocker, bool AmbushReveal);
-    public sealed record AttackVolleyResolved(int Tick, IReadOnlyList<AttackRecord> Attacks) : GameEvent(Tick);
+    // combat — ability activation pipeline (combat-spec §8). No instant volley.
+    public sealed record AbilityCommitted(int Tick, EntityId Creature, string AbilityId, TargetKind TargetKind, EntityId TargetMonster, PlayerId TargetPlayer, int WindupTicks) : GameEvent(Tick);  // the telegraph
+    public sealed record HitRecord(EntityId Target, PlayerId TargetOwner, bool IsSummoner, int Dealt, int Overflow);
+    public sealed record AbilityResolved(int Tick, EntityId Creature, string AbilityId, IReadOnlyList<HitRecord> Hits) : GameEvent(Tick);
+    public sealed record CreatureRecalled(int Tick, PlayerId Owner, EntityId Creature, int ReserveSlot) : GameEvent(Tick);
+    public sealed record CreatureDeployed(int Tick, PlayerId Owner, EntityId Creature, CardDefId Def, FieldZone Zone, int Hp) : GameEvent(Tick);
     public sealed record MonsterDied(int Tick, PlayerId Owner, EntityId Monster, CardDefId Def, EntityId Killer) : GameEvent(Tick);
     public sealed record SummonerDamaged(int Tick, PlayerId Player, int Amount, int NewLife, EntityId Source) : GameEvent(Tick);
     public sealed record SummonerHealed(int Tick, PlayerId Player, int Amount, int NewLife) : GameEvent(Tick);

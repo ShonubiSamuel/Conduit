@@ -6,34 +6,49 @@ using Conduit.Engine.State;
 
 namespace Conduit.SimHarness
 {
-    /// <summary>Deterministic rule-priority policy (spec §10). Consumes DuelView, emits intents. No ML, no randomness.</summary>
+    /// <summary>Deterministic rule-priority policy (spec §10). Consumes DuelView, emits directives/intents.
+    /// No ML, no randomness. Bots command via high-level directives — the AI handles tactics (combat-model §2).</summary>
     public interface IBotPolicy
     {
         string Name { get; }
         IEnumerable<Intent> Decide(DuelView view, ContentDb content);
     }
 
-    /// <summary>Summon cheapest-first, everything attacks. The face-race archetype.</summary>
+    /// <summary>Pressure: summon the cheapest creature, order everything to attack, redeploy reserves.</summary>
     public sealed class AggroBot : IBotPolicy
     {
         public string Name => "aggro";
         public IEnumerable<Intent> Decide(DuelView view, ContentDb content)
         {
             if (view.YourDrawCharges > 0 && view.Hand.Count < 7) yield return new DrawCard();
-            var summonable = view.Hand
-                .Select(h => (h, def: content.Get(h.Def)))
-                .Where(x => x.def.Kind == CardKind.Monster && x.def.CostMilliEnergy <= view.YourEnergyMilli)
-                .OrderBy(x => x.def.CostMilliEnergy).ThenBy(x => x.h.Id.Value)
-                .ToList();
-            if (summonable.Count > 0 && view.Mine.Count() < 4)
-                yield return new SummonMonster(summonable[0].h.Id, FieldZone.Vanguard);
-            // monsters default to Attack(auto) — no commands needed
+
+            if (view.Mine.Count() < 4)
+            {
+                if (view.Reserve.Count > 0)
+                    yield return new DeployReserve(view.Reserve[0].Slot, FieldZone.Vanguard);
+                else
+                {
+                    var pick = view.Hand
+                        .Select(h => (h, def: content.Get(h.Def)))
+                        .Where(x => x.def.Kind == CardKind.Monster && x.def.CostMilliEnergy <= view.YourEnergyMilli)
+                        .OrderBy(x => x.def.CostMilliEnergy).ThenBy(x => x.h.Id.Value)
+                        .FirstOrDefault();
+                    if (pick.h != null) yield return new SummonMonster(pick.h.Id, FieldZone.Vanguard);
+                }
+            }
+
+            // push the enemy summoner (a directed face attack; defense must kill the pushers to survive).
+            // NOTE: how defense gates a push (overflow/lane-blocking) is deferred game design — the engine
+            // just supports directive-driven targeting generically.
+            var pushOrder = Directive.AttackOf(TargetRef.OfSummoner(view.You.Opponent));
+            foreach (var m in view.Mine)
+                if (!m.AttackingSummoner)
+                    yield return new CommandMonster(m.Id, pushOrder);
         }
     }
 
-    /// <summary>Control archetype: keep the board FULL of blockers (count &gt; size), all Defending;
-    /// heal to out-sustain the aggro clock; Guard when the wall thins. This is a real test of
-    /// whether control can stabilize against aggro (the aggro-vs-control equilibrium).</summary>
+    /// <summary>Control: field durable creatures on Defend to protect the summoner, heal to out-sustain,
+    /// Recall a creature about to die, redeploy healed reserves, Guard when the wall thins.</summary>
     public sealed class WallBot : IBotPolicy
     {
         public string Name => "wall";
@@ -41,24 +56,30 @@ namespace Conduit.SimHarness
         {
             if (view.YourDrawCharges > 0 && view.Hand.Count < 7) yield return new DrawCard();
 
-            // Fill the board with the CHEAPEST wall — blocker COUNT stops more attackers than one big wall.
             if (view.Mine.Count() < 4)
             {
-                var wall = view.Hand
-                    .Select(h => (h, def: content.Get(h.Def)))
-                    .Where(x => x.def.Kind == CardKind.Monster && x.def.CostMilliEnergy <= view.YourEnergyMilli)
-                    .OrderBy(x => x.def.CostMilliEnergy).ThenByDescending(x => x.def.Hp).ThenBy(x => x.h.Id.Value)
-                    .ToList();
-                if (wall.Count > 0)
-                    yield return new SummonMonster(wall[0].h.Id, FieldZone.Vanguard);
+                if (view.Reserve.Count > 0)
+                    yield return new DeployReserve(view.Reserve[0].Slot, FieldZone.Vanguard);
+                else
+                {
+                    var pick = view.Hand
+                        .Select(h => (h, def: content.Get(h.Def)))
+                        .Where(x => x.def.Kind == CardKind.Monster && x.def.CostMilliEnergy <= view.YourEnergyMilli)
+                        .OrderByDescending(x => x.def.Hp).ThenBy(x => x.h.Id.Value)
+                        .FirstOrDefault();
+                    if (pick.h != null) yield return new SummonMonster(pick.h.Id, FieldZone.Vanguard);
+                }
             }
 
-            // Everything defends — a wall deck wins by outlasting, not attacking.
+            // everything guards the summoner; recall the most-wounded creature before it dies
             foreach (var m in view.Mine)
-                if (m.Directive != DirectiveKind.Defend)
-                    yield return new CommandMonster(m.Id, Directive.Defend(FieldZone.Vanguard));
+            {
+                if (m.MaxHp > 0 && m.Hp * 100 / m.MaxHp <= 20)
+                    yield return new Recall(m.Id);
+                else if (m.Directive != DirectiveKind.Defend)
+                    yield return new CommandMonster(m.Id, Directive.Defend(TargetRef.OfSummoner(view.You)));
+            }
 
-            // Sustain: cast the cheapest heal (Sign tier) when hurt and off-cooldown.
             if (view.YourLife < view.OppLife || view.YourLife < 120)
             {
                 var heal = view.Hand
@@ -85,41 +106,18 @@ namespace Conduit.SimHarness
         };
     }
 
-    /// <summary>Hand-tuned proto archetype decks (DeckRules.Proto — pool is too small for Strict yet).
-    /// A recipe is (cardId, weight) pairs cycled to deckSize, so the mix (e.g. heals in the control deck)
-    /// is intentional rather than "one Aspect's monsters cycled".</summary>
+    /// <summary>Generic archetype decks built from the ENGINE TEST FIXTURES (not designed content).</summary>
     public static class DeckBuilder
     {
         private static readonly Dictionary<string, (string id, int weight)[]> Recipes = new()
         {
-            // Aggro: cheap, high-ATK, a few burn spells. Ember.
-            ["aggro"] = new[]
-            {
-                ("ember.cinderling", 3), ("ember.flarewhelp", 3), ("ember.ashrunner", 3),
-                ("ember.emberdrake", 2), ("ember.pyreclaw", 2), ("ember.flareburst", 2),
-            },
-            // Control: cheap Bulwark walls + heals to out-sustain. Bastion.
-            ["wall"] = new[]
-            {
-                ("bastion.stonewall", 4), ("bastion.granitewarden", 3), ("bastion.cragback", 2),
-                ("bastion.bulwarktitan", 2), ("bastion.aegis", 4),
-            },
+            ["aggro"] = new[] { ("test.skirmisher", 3), ("test.melee", 3), ("test.ranged", 2) },
+            ["wall"] = new[] { ("test.bulwark", 4), ("test.brute", 2), ("test.mend", 3) },
         };
 
         public static DeckList Archetype(string bot, ContentDb content, int deckSize = 30)
         {
-            if (!Recipes.TryGetValue(bot, out var recipe))
-            {
-                // fallback: one Aspect's monsters cycled
-                Aspect aspect = bot == "wall" ? Aspect.Bastion : Aspect.Ember;
-                var pool = content.All.Where(c => c.Aspect == aspect && c.Kind == CardKind.Monster && c.Rarity != Rarity.Token)
-                    .OrderBy(c => c.Id.Value, System.StringComparer.Ordinal).ToList();
-                var fb = new List<CardDefId>();
-                for (int i = 0; fb.Count < deckSize; i++) fb.Add(pool[i % pool.Count].Id);
-                return new DeckList(fb);
-            }
-
-            // expand weighted recipe, then cycle to fill exactly deckSize (deterministic order)
+            var recipe = Recipes.TryGetValue(bot, out var r) ? r : Recipes["aggro"];
             var template = new List<CardDefId>();
             foreach (var (id, weight) in recipe)
                 for (int i = 0; i < weight; i++) template.Add(new CardDefId(id));

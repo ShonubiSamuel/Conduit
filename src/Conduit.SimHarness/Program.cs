@@ -105,7 +105,8 @@ switch (cmd)
         ulong seed = ulong.Parse(Get("seed", "42"));
         var tr = Runner.RunTrace(config, db, Bots.ByName(matchup[0]), Bots.ByName(matchup[1]), seed);
         Console.WriteLine($"trace {matchup[0]} vs {matchup[1]} seed {seed} → winner P{tr.Winner}, {tr.Ticks} ticks ({tr.Ticks / (double)config.TicksPerMinute:F1} min)");
-        Console.WriteLine($"  face damage taken: P0 {tr.P0FaceDmgTaken} | P1 {tr.P1FaceDmgTaken}   (of {config.LifeMax} life)   total attacks resolved: {tr.TotalAttacks}");
+        Console.WriteLine($"  face damage taken: P0 {tr.P0FaceDmgTaken} | P1 {tr.P1FaceDmgTaken}   (of {config.LifeMax} life)");
+        Console.WriteLine($"  abilities resolved: {tr.TotalAttacks} | creature damage dealt: {tr.P0MonsterDmgDealt} | creature deaths: {tr.P1MonsterDmgDealt}");
         Console.WriteLine($"  {"tick",6} {"P0life",6} {"P1life",6} {"P0brd",5} {"P1brd",5} {"P0e",6} {"P1e",6}");
         foreach (var s in tr.Timeline)
             Console.WriteLine($"  {s.Tick,6} {s.P0Life,6} {s.P1Life,6} {s.P0Board,5} {s.P1Board,5} {s.P0EnergyMilli,6} {s.P1EnergyMilli,6}");

@@ -14,21 +14,28 @@ namespace Conduit.Engine.Intents
         public static TargetRef OfZone(FieldZone z) => new TargetRef(TargetKind.Zone, Zone: z);
     }
 
-    public enum DirectiveKind { Attack, Defend, Return, Sacrifice }
+    /// <summary>High-level intentions the player issues; the creature AI decides HOW (combat-model §2).</summary>
+    public enum DirectiveKind { Attack, Defend, Hold, Follow, Retreat, Sacrifice }
 
     public readonly record struct Directive(DirectiveKind Kind, TargetRef Target = default, FieldZone Zone = default)
     {
         public static Directive AttackAuto => new Directive(DirectiveKind.Attack);
-        public static Directive Defend(FieldZone z) => new Directive(DirectiveKind.Defend, Zone: z);
+        public static Directive AttackOf(TargetRef t) => new Directive(DirectiveKind.Attack, Target: t);
+        public static Directive Defend(TargetRef ward) => new Directive(DirectiveKind.Defend, Target: ward);
+        public static Directive Hold(FieldZone z) => new Directive(DirectiveKind.Hold, Zone: z);
+        public static Directive Follow => new Directive(DirectiveKind.Follow);
+        public static Directive Retreat => new Directive(DirectiveKind.Retreat);
     }
 
     // ── The closed intent union (R2). Isomorphic to the voice grammar's entity × verb × slot. ──
     public abstract record Intent;
     public sealed record SummonMonster(CardInstanceId HandCard, FieldZone Slot) : Intent;
+    public sealed record DeployReserve(int ReserveSlot, FieldZone Slot) : Intent;   // redeploy a recalled creature
     public sealed record CastSpell(CardInstanceId HandCard, CastTier Tier, TargetRef Target) : Intent;
     public sealed record CancelChannel : Intent;
     public sealed record CommandMonster(EntityId Monster, Directive D) : Intent;
-    public sealed record Guard : Intent;      // the built-in danger-scaled ward (spec §6.7)
+    public sealed record Recall(EntityId Monster) : Intent;   // save-before-death → reserve (combat-model §6)
+    public sealed record Guard : Intent;      // the built-in danger-scaled ward
     public sealed record DrawCard : Intent;
     public sealed record Concede : Intent;
 

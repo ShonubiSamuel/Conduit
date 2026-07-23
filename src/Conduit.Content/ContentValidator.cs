@@ -26,21 +26,24 @@ namespace Conduit.Content
         private static readonly (Aspect, Aspect)[] Opposed =
             { (Aspect.Ember, Aspect.Tide), (Aspect.Gale, Aspect.Bastion), (Aspect.Umbra, Aspect.Verdant) };
 
-        /// <summary>Stat-budget check (balance §2): SP = 2C+2, ATK = 2 SP, HP = 1 SP, tolerance ±1
-        /// (keywords are priced loosely in v0 — a keyword ≈ 1 SP).</summary>
-        public static IEnumerable<ValidationIssue> CheckBudgets(ContentDb db, int toleranceSp = 1)
+        /// <summary>Structural sanity checks for the ability model (combat-spec §9). The full DPS-equivalent
+        /// budget pricing is deferred to content-design time; here we only catch malformed content:
+        /// creatures need at least one ability, keyword caps by rarity, non-negative timings.</summary>
+        public static IEnumerable<ValidationIssue> CheckBudgets(ContentDb db, int ticksPerMinute = 1200)
         {
-            foreach (var d in db.All.Where(c => c.Kind == CardKind.Monster && c.Rarity != Rarity.Token))
+            foreach (var d in db.All.Where(c => c.Kind == CardKind.Monster))
             {
-                int costEnergy = d.CostMilliEnergy / 1000;
-                int budget = 2 * costEnergy + 2;
-                int spent = d.Atk * 2 + d.Hp + d.Keywords.Count;
-                int diff = spent - budget;
-                if (Math.Abs(diff) > toleranceSp)
-                    yield return new ValidationIssue(false,
-                        $"{d.Id}: SP {spent} vs budget {budget} (Δ{diff:+#;-#;0}) — off-curve, confirm intentional");
+                if (d.Rarity != Rarity.Token && d.Abilities.Count == 0)
+                    yield return new ValidationIssue(true, $"{d.Id}: monster has no abilities");
                 if (d.Keywords.Count > (d.Rarity == Rarity.Legendary ? 3 : 2))
                     yield return new ValidationIssue(true, $"{d.Id}: too many keywords for {d.Rarity}");
+                foreach (var a in d.Abilities)
+                {
+                    if (a.WindupTicks < 0 || a.CooldownTicks < 0 || a.RecoveryTicks < 0)
+                        yield return new ValidationIssue(true, $"{d.Id}.{a.Id}: negative timing");
+                    if (a.RangeMaxMu < a.RangeMinMu)
+                        yield return new ValidationIssue(true, $"{d.Id}.{a.Id}: rangeMax < rangeMin");
+                }
             }
         }
 

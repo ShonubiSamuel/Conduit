@@ -22,6 +22,22 @@ namespace Conduit.Engine.Core
     /// <summary>The ten launch keywords (casting-and-cards §2).</summary>
     public enum Keyword { Bulwark, Swift, Pierce, Ward, Regrow, Ambush, Drain, Torrent, Swarm, SoulLink }
 
+    // ── Ability-driven combat model (combat-spec.md) ──
+
+    /// <summary>A creature's current combat action (spec §5).</summary>
+    public enum ActionState { Idle, Moving, WindingUp, Recovering, Retreating }
+
+    /// <summary>Area shape of an ability. v0: Single / Circle / Cone (Line deferred).</summary>
+    public enum AoeShape { Single, Circle, Cone }
+
+    /// <summary>How a creature's AI prefers to pick among valid targets (spec §7). Generic — no
+    /// element/creature semantics; content assigns these to abilities later.</summary>
+    public enum TargetPref { Any, Swarm, Armored, Summoner, LowestHp, HighestThreat }
+
+    /// <summary>Damage classification. Placeholder single value in v0 — element/type interactions are
+    /// unspecified content design, not engine design. Reserved so content can extend without engine change.</summary>
+    public enum DamageType { Generic }
+
     /// <summary>The closed effect vocabulary (spec §3.3). New ops are a spec change.</summary>
     public enum EffectOpType { Damage, Heal, ModifyStats, GrantStatus, SummonToken, DrainLife, Hex }
 

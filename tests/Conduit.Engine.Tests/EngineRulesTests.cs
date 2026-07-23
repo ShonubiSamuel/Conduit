@@ -108,7 +108,7 @@ namespace Conduit.Engine.Tests
         {
             var (cfg, db) = Load();
             // hand P0 a spell deck? simpler: submit CastSpell for a spell we inject via a custom deck
-            var spellDeck = new DeckList(Enumerable.Repeat(new CardDefId("ember.flareburst"), cfg.DeckSize).ToList());
+            var spellDeck = new DeckList(Enumerable.Repeat(new CardDefId("test.mend"), cfg.DeckSize).ToList());
             var wallDeck = DeckBuilder.Archetype("wall", db, cfg.DeckSize);
             var e = DuelEngine.Create(cfg, db, new[] { spellDeck, wallDeck }, 42);
             var hand = e.View(PlayerId.P0).Hand[0];
@@ -122,7 +122,7 @@ namespace Conduit.Engine.Tests
         public void Cast_SignTier_CompletesAndCooldowns()
         {
             var (cfg, db) = Load();
-            var spellDeck = new DeckList(Enumerable.Repeat(new CardDefId("verdant.mend"), cfg.DeckSize).ToList());
+            var spellDeck = new DeckList(Enumerable.Repeat(new CardDefId("test.mend"), cfg.DeckSize).ToList());
             var wallDeck = DeckBuilder.Archetype("wall", db, cfg.DeckSize);
             var e = DuelEngine.Create(cfg, db, new[] { spellDeck, wallDeck }, 42);
             var hand = e.View(PlayerId.P0).Hand[0];
