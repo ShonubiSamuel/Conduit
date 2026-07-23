@@ -500,11 +500,12 @@ namespace Conduit.Engine
                 MonsterInstance? targetMonster = null;
                 PlayerId targetPlayer = m.Owner.Opponent;
 
+                // Canonical model (INDEX §3, balance §5 #5): attacks aim at the enemy SUMMONER;
+                // defending monsters intercept (one each, Bulwark two); excess overflows to face.
+                // Only an EXPLICIT CommandMonster→Attack(monster) directs a strike at a specific monster.
                 var explicitTarget = m.Directive.Target;
                 if (explicitTarget.Kind == TargetKind.Monster)
                     targetMonster = enemies.FirstOrDefault(x => x.Id == explicitTarget.Monster);
-                if (targetMonster == null && explicitTarget.Kind != TargetKind.Summoner)
-                    targetMonster = enemies.FirstOrDefault();     // auto-acquire: lowest EntityId (v0 spatial model)
 
                 bool reveal = m.FaceDown;
                 if (reveal) m.FaceDown = false;

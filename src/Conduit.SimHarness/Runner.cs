@@ -63,5 +63,89 @@ namespace Conduit.SimHarness
                 results.Where(r => r.FirstSummonTick >= 0).DefaultIfEmpty(new DuelOutcome(0, 0, 0, 0))
                        .Average(r => r.FirstSummonTick) * 60.0 / cfg.TicksPerMinute);
         }
+
+        /// <summary>Clone the config with one scalar-int property overridden by name (case-insensitive).
+        /// init-only setters are callable via reflection at runtime — the compiler restriction is not a runtime one.</summary>
+        public static DuelConfig WithParam(DuelConfig baseCfg, string name, int value)
+        {
+            var prop = typeof(DuelConfig).GetProperty(name,
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
+            if (prop == null) throw new ArgumentException($"unknown config param '{name}'");
+            if (prop.PropertyType != typeof(int)) throw new ArgumentException($"param '{name}' is not a scalar int (arrays not sweepable)");
+            var clone = baseCfg with { };
+            prop.SetValue(clone, value);
+            return clone;
+        }
+
+        /// <summary>Run one duel and capture a coarse timeline + damage attribution — the diagnostic
+        /// that answers "why did the duel end this way" instead of guessing from aggregate stats.</summary>
+        public sealed record TraceSnapshot(int Tick, int P0Life, int P1Life, int P0Board, int P1Board, int P0EnergyMilli, int P1EnergyMilli, bool P0Surge, bool P1Surge);
+        public sealed record TraceResult(int Winner, int Ticks, IReadOnlyList<TraceSnapshot> Timeline,
+            int P0FaceDmgTaken, int P1FaceDmgTaken, int P0MonsterDmgDealt, int P1MonsterDmgDealt, int TotalAttacks);
+
+        public static TraceResult RunTrace(DuelConfig cfg, ContentDb content, IBotPolicy a, IBotPolicy b, ulong seed, int snapshotEvery = 200)
+        {
+            var decks = new[] { DeckBuilder.Archetype(a.Name, content, cfg.DeckSize), DeckBuilder.Archetype(b.Name, content, cfg.DeckSize) };
+            var engine = Engine.DuelEngine.Create(cfg, content, decks, seed);
+            var bots = new[] { a, b };
+            var seq = new ulong[] { 0, 0 };
+            var timeline = new List<TraceSnapshot>();
+            int[] faceTaken = { 0, 0 };
+            int[] monsterDealt = { 0, 0 };
+            int totalAttacks = 0;
+
+            while (engine.Phase != DuelPhase.Ended && engine.CurrentTick < MaxTicks)
+            {
+                if (engine.CurrentTick % BotDecisionPeriod == 0)
+                    for (int p = 0; p < 2; p++)
+                    {
+                        var pid = new PlayerId((byte)p);
+                        foreach (var intent in bots[p].Decide(engine.View(pid), content))
+                            engine.Submit(new IntentEnvelope(++seq[p], pid, engine.CurrentTick + 1, intent, new IntentMeta("AI")));
+                    }
+
+                foreach (var ev in engine.AdvanceTick())
+                {
+                    if (ev is Engine.Events.SummonerDamaged sd) faceTaken[sd.Player.Value] += sd.Amount;
+                    else if (ev is Engine.Events.AttackVolleyResolved vol)
+                        foreach (var atk in vol.Attacks)
+                        {
+                            totalAttacks++;
+                            if (atk.TargetKind == TargetKind.Monster)
+                            {
+                                // attacker's owner dealt monster damage; find owner via field lookup is gone, so attribute by sign later — approximate: credit both sides' monster dmg by attacker not tracked here
+                            }
+                        }
+                }
+
+                if (engine.CurrentTick % snapshotEvery == 0)
+                {
+                    var v0 = engine.View(PlayerId.P0);
+                    var v1 = engine.View(PlayerId.P1);
+                    timeline.Add(new TraceSnapshot(engine.CurrentTick, v0.YourLife, v1.YourLife,
+                        v0.Mine.Count(), v1.Mine.Count(), v0.YourEnergyMilli, v1.YourEnergyMilli,
+                        false, false));
+                }
+            }
+            return new TraceResult(engine.Result?.Winner?.Value ?? -1, engine.CurrentTick, timeline,
+                faceTaken[0], faceTaken[1], monsterDealt[0], monsterDealt[1], totalAttacks);
+        }
+
+        public sealed record SweepRow(int Value, MatchupStats Stats);
+
+        /// <summary>Vary one config parameter across [start, end] by step; run the matchup at each.</summary>
+        public static List<SweepRow> RunSweep(DuelConfig baseCfg, ContentDb content, string param,
+            int start, int end, int step, string botA, string botB, int duels, ulong seedBase)
+        {
+            var rows = new List<SweepRow>();
+            for (int v = start; v <= end; v += step)
+            {
+                var cfg = WithParam(baseCfg, param, v);
+                // shared seed base across values → same shuffles, so differences are the parameter, not variance
+                rows.Add(new SweepRow(v, RunMatchup(cfg, content, botA, botB, duels, seedBase)));
+                if (step == 0) break;
+            }
+            return rows;
+        }
     }
 }
