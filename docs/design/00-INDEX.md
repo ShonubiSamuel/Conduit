@@ -39,6 +39,7 @@
 | `balance-math.md` | **CANONICAL** | Numbers are v0.1 provisional; framework is fixed |
 | `casting-and-cards.md` | **CANONICAL** | Note: card *faces* are rendered (Option B), see §3 |
 | `deck-progression.md` | **CANONICAL** | |
+| `combat-model.md` | **CANONICAL (combat)** | v0.2 commander/ability-AI model. Supersedes the instant ATK-vs-ATK volley resolution in roadmap/balance §5/spec §6. Economy + pacing targets unaffected |
 | `voice-architecture.md` | **CANONICAL (voice)** | Supersedes voice-system.md & interaction §1 |
 | `interaction-system.md` | **PARTIAL** | §1 (voice) superseded; §3–§8 current |
 | `card-visibility-engineering.md` | **PARTIAL** | Option B now primary; occlusion analysis = fallback + still-needed hand occlusion |
@@ -47,7 +48,7 @@
 | `references.md` | **EVERGREEN** | |
 | `research.md` | **BACKGROUND** | Original report; dedicated docs win on specifics |
 | `voice-system.md` | **SUPERSEDED** | Historical only |
-| `m0-m1-technical-spec.md` | **DRAFT — awaiting approval** | Implementation spec: determinism contract, Intent/Event schema, tick pipeline, repo structure. Implements §3's real-time combat model (roadmap M1's "WEGO-with-interrupts" phrasing is outdated — update on approval) |
+| `m0-m1-technical-spec.md` | **APPROVED — combat §6 superseded** | Implemented as the Conduit repo. Determinism contract, Intent/Event schema, tick pipeline, replay, economy all current. **§6 combat (instant volley) is superseded by `combat-model.md` v0.2** and must be re-specified to the ability-activation model |
 
 ---
 
@@ -64,7 +65,7 @@ These are the settled decisions. Several were finalized in design discussion and
 ### The game (identity & combat)
 - **Aspect system:** 6 **grounded elemental** Aspects — Ember (Fire), Tide (Water), Bastion (Earth), Gale (Wind), Verdant (Life), Umbra (Shadow) — on an ally/enemy wheel. Each is *helpless at something* (identity = weakness). Universal cost: **monsters are your conduit** (no fielded monster → limited higher casting).
 - **Reactions (element combos) and Oaths (self-restriction for power) are an ADVANCED optional layer** — a full duel plays without them; core must be fun without them.
-- **Combat model (settled in discussion — canonical):** real-time, **energy-paced continuous** action (no turns; not spammable). Player is a **stationary Summoner-Caster / battle-conductor**: feet planted, upper-body + gaze only, **no room-scale movement or dodging ever required**. **Monsters carry the main damage;** the player has a compact *active* support kit (blast, shield/ward, buff/heal own monsters, debuff/trap, lean/duck-in-place). Attacks aimed at the player are **telegraphed and answered by a planted defensive gesture** (Until You Fall model), never by relocating; a **summoning circle** anchors the player (lore + small-space safety). Most attacks resolve monster-vs-monster.
+- **Combat model (canonical = `combat-model.md` v0.2):** real-time, continuous, **commander-and-intelligent-creatures**. Player issues high-level **directives** (Attack/Defend/Hold/Retreat-Recall/Follow); each creature has its own **ability kit** (damage/range/wind-up/cooldown/AoE/preferred-targets) and a deterministic **combat AI** that picks abilities as the fight evolves. **Big HP, small per-hit damage → attrition** (no instant ATK-vs-ATK, no retaliation rule; mutual damage is emergent from two agents attacking). **Fewer, more valuable, longer-lived creatures**; **Recall/heal/revive** make them persistent assets, not turrets. Player is a **stationary Summoner-Caster**: feet planted, upper-body + gaze only, **no room-scale movement/dodging ever**; support kit (heal, recall, protect, interrupt, buff/debuff, danger-scaled Guard), telegraphed attacks answered by a planted gesture (Until You Fall). This **supersedes** the older "monsters carry damage via monster-vs-monster ATK" phrasing.
 - **Casting ladder (canonical):** Sign (pose, fast, weak) → Word (spoken, medium) → Script (air-drawn sigil, slow, strong) → Ritual (Script+Word, slowest, strongest). Commitment = power; big casts telegraph themselves. Incantation lines are **printed on cards**; recognition needs only the name-kernel. Silent path always available.
 - **Card handling (canonical):** only **two physical zones** — deck (draw) + hand. A **holographic duel-disk** renders all other zones (graveyard, set traps, life). Spent cards → a **physical discard pouch** that is a *tactile layer over a virtual-authoritative graveyard* (ritual mode = physically retrieve to revive; swift mode = tap hologram).
 - **Deck rules:** exactly **30 cards, max 2 copies (legendaries 1)**. Primary Aspect ≥20 cards; one allied-Aspect splash ≤10; **opposed Aspects never share a deck**. Banlist philosophy: **nerf-first, ban-almost-never**, via **server-side live balancing of cost/stats on physical cards** (identity/text stay fixed). Collector's promise: *no owned card ever becomes unplayable.*
