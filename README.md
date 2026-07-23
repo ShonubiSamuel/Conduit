@@ -13,7 +13,8 @@ The headless, deterministic rules engine for the (untitled) mixed-reality tradin
 | `src/Conduit.SimHarness` | `conduit-sim`: AI-vs-AI duels, matchup sweeps, content checks. Permanent CI infrastructure. |
 | `tests/` | Unit, invariant, and determinism tests. `tests/golden/` holds the golden replay corpus (grows with every fixed bug). |
 | `content/` | The M0 proto card set (~30 cards) and `balance.v0.json` (every tunable constant — the engine hardcodes none). |
-| `docs/design/` | The 14-document design corpus. `00-INDEX.md` wins all disputes. |
+| `unity/ConduitDesktop` | **M2** — the Unity 6 desktop front-end (architecture rule R4: a dumb subscriber over the engine). Consumes `Conduit.Engine.dll` (vendored in `Assets/Plugins`; run `unity/sync-engine.sh` to refresh). Verified: the engine runs bit-identical under Unity's runtime and the .NET harness (same seed → same state hash). |
+| `docs/design/` | The design corpus. `00-INDEX.md` wins all disputes. |
 
 ## Quick start
 
