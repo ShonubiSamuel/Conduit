@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Conduit.Content/Conduit.Content.csproj" />
+    <Project Path="src/Conduit.Engine/Conduit.Engine.csproj" />
+    <Project Path="src/Conduit.SimHarness/Conduit.SimHarness.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Conduit.Engine.Tests/Conduit.Engine.Tests.csproj" />
+  </Folder>
+</Solution>

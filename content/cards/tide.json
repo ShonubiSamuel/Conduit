@@ -1,0 +1,7 @@
+[
+  { "id": "tide.mistveil",    "aspect": "Tide", "clan": "Wisp",    "rarity": "Common", "kind": "Monster", "cost": 2, "atk": 1, "hp": 3, "keywords": [{ "k": "Ward", "x": 1 }] },
+  { "id": "tide.tidecaller",  "aspect": "Tide", "clan": "Merrow",  "rarity": "Common", "kind": "Monster", "cost": 3, "atk": 2, "hp": 4 },
+  { "id": "tide.brinehorn",   "aspect": "Tide", "clan": "Beast",   "rarity": "Common", "kind": "Monster", "cost": 4, "atk": 3, "hp": 4, "keywords": [{ "k": "Torrent" }] },
+  { "id": "tide.wavewarden",  "aspect": "Tide", "clan": "Merrow",  "rarity": "Rare",   "kind": "Monster", "cost": 4, "atk": 2, "hp": 5, "keywords": [{ "k": "Ward", "x": 2 }] },
+  { "id": "tide.depthscale",  "aspect": "Tide", "clan": "Drake",   "rarity": "Rare",   "kind": "Monster", "cost": 5, "atk": 3, "hp": 6, "keywords": [{ "k": "Torrent" }] }
+]

@@ -1,0 +1,9 @@
+[
+  { "id": "umbra.shadeveil",  "aspect": "Umbra", "clan": "Wraith", "rarity": "Common", "kind": "Monster", "cost": 2, "atk": 2, "hp": 2, "keywords": [{ "k": "Ambush" }] },
+  { "id": "umbra.soulleech",  "aspect": "Umbra", "clan": "Wraith", "rarity": "Common", "kind": "Monster", "cost": 3, "atk": 2, "hp": 3, "keywords": [{ "k": "Drain" }] },
+  { "id": "umbra.gloomfang",  "aspect": "Umbra", "clan": "Beast",  "rarity": "Common", "kind": "Monster", "cost": 3, "atk": 3, "hp": 2, "keywords": [{ "k": "Drain" }] },
+  { "id": "umbra.duskwraith", "aspect": "Umbra", "clan": "Wraith", "rarity": "Rare",   "kind": "Monster", "cost": 4, "atk": 3, "hp": 4, "keywords": [{ "k": "Ambush" }] },
+  { "id": "umbra.nightreaver","aspect": "Umbra", "clan": "Wraith", "rarity": "Rare",   "kind": "Monster", "cost": 5, "atk": 4, "hp": 4, "keywords": [{ "k": "Drain" }] },
+  { "id": "umbra.wither",     "aspect": "Umbra", "clan": "None",   "rarity": "Common", "kind": "Spell",   "cost": 2, "atk": 0, "hp": 0, "school": "Hex",
+    "effects": [{ "op": "Hex", "amount": -2, "durationTicks": 200 }] }
+]

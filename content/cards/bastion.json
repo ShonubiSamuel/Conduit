@@ -1,0 +1,9 @@
+[
+  { "id": "bastion.stonewall",     "aspect": "Bastion", "clan": "Construct", "rarity": "Common", "kind": "Monster", "cost": 2, "atk": 0, "hp": 6, "keywords": [{ "k": "Bulwark" }] },
+  { "id": "bastion.shaleguard",    "aspect": "Bastion", "clan": "Construct", "rarity": "Common", "kind": "Monster", "cost": 2, "atk": 1, "hp": 3, "keywords": [{ "k": "Ward", "x": 1 }] },
+  { "id": "bastion.cragback",      "aspect": "Bastion", "clan": "Beast",     "rarity": "Common", "kind": "Monster", "cost": 3, "atk": 1, "hp": 5, "keywords": [{ "k": "Ward", "x": 1 }] },
+  { "id": "bastion.granitewarden", "aspect": "Bastion", "clan": "Construct", "rarity": "Rare",   "kind": "Monster", "cost": 4, "atk": 1, "hp": 7, "keywords": [{ "k": "Bulwark" }] },
+  { "id": "bastion.bulwarktitan",  "aspect": "Bastion", "clan": "Titan",     "rarity": "Rare",   "kind": "Monster", "cost": 6, "atk": 2, "hp": 9, "keywords": [{ "k": "Bulwark" }, { "k": "Ward", "x": 2 }] },
+  { "id": "bastion.aegis",         "aspect": "Bastion", "clan": "None",      "rarity": "Common", "kind": "Spell",   "cost": 2, "atk": 0, "hp": 0, "school": "Defense",
+    "effects": [{ "op": "Heal", "amount": 4 }] }
+]

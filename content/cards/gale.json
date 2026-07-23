@@ -1,0 +1,7 @@
+[
+  { "id": "gale.windwisp",   "aspect": "Gale", "clan": "Wisp",  "rarity": "Common", "kind": "Monster", "cost": 1, "atk": 1, "hp": 1, "keywords": [{ "k": "Swift" }] },
+  { "id": "gale.zephyrling", "aspect": "Gale", "clan": "Wisp",  "rarity": "Common", "kind": "Monster", "cost": 2, "atk": 2, "hp": 2, "keywords": [{ "k": "Swift" }] },
+  { "id": "gale.galeblade",  "aspect": "Gale", "clan": "Raptor","rarity": "Common", "kind": "Monster", "cost": 3, "atk": 3, "hp": 2, "keywords": [{ "k": "Swift" }] },
+  { "id": "gale.skydancer",  "aspect": "Gale", "clan": "Raptor","rarity": "Rare",   "kind": "Monster", "cost": 4, "atk": 3, "hp": 3, "keywords": [{ "k": "Swift" }] },
+  { "id": "gale.stormtalon", "aspect": "Gale", "clan": "Raptor","rarity": "Rare",   "kind": "Monster", "cost": 5, "atk": 4, "hp": 3, "keywords": [{ "k": "Swift" }, { "k": "Ambush" }] }
+]
