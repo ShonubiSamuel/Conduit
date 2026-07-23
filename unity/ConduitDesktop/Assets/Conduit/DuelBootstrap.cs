@@ -15,14 +15,16 @@ using CardInstanceId = Conduit.Engine.Core.CardInstanceId;
 
 namespace Conduit.Desktop
 {
+    // Runs two ways: (1) it's a component on the "ConduitDuel" GameObject in Assets/Scenes/Duel.unity,
+    // or (2) if you press Play in any scene without it, the guarded Boot below spawns one. Either way
+    // there is exactly one instance.
     public sealed class DuelBootstrap : MonoBehaviour
     {
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
         {
-            var go = new GameObject("ConduitDuel");
-            DontDestroyOnLoad(go);
-            go.AddComponent<DuelBootstrap>();
+            if (FindFirstObjectByType<DuelBootstrap>() != null) return;   // scene already has one
+            new GameObject("ConduitDuel").AddComponent<DuelBootstrap>();
         }
 
         private DuelConfig _cfg;
