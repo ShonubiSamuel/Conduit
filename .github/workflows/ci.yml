@@ -35,7 +35,10 @@ jobs:
         shell: bash
         run: |
           dotnet run -c Release --project src/Conduit.SimHarness -- hashes --duels 50 --matchup aggro:wall --seed-base 42 > got.txt
-          if ! diff -u ci/determinism-golden.txt got.txt; then
+          # normalise line endings on both sides (Windows checkout / redirection) before comparing
+          tr -d '\r' < ci/determinism-golden.txt > golden.norm
+          tr -d '\r' < got.txt > got.norm
+          if ! diff -u golden.norm got.norm; then
             echo "::error::determinism drift on ${{ matrix.os }} — state hashes differ from golden"
             exit 1
           fi
