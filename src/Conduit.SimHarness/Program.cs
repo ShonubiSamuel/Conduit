@@ -99,6 +99,23 @@ switch (cmd)
         }
         return 0;
     }
+    case "hashes":
+    {
+        // Emit final state hashes (integers — guaranteed identical across OS) for the determinism gate.
+        // CI asserts these against a committed golden file; no artifact storage needed.
+        int duels = int.Parse(Get("duels", "50"));
+        var matchup = Get("matchup", "aggro:wall").Split(':');
+        ulong seedBase = ulong.Parse(Get("seed-base", "42"));
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < duels; i++)
+        {
+            var outcome = Runner.RunDuel(config, db, Bots.ByName(matchup[0]), Bots.ByName(matchup[1]), seedBase + (ulong)i);
+            sb.Append(outcome.FinalHash.ToString("x16")).Append(' ')
+              .Append(outcome.Winner).Append(' ').Append(outcome.Ticks).Append('\n');
+        }
+        Console.Write(sb.ToString());
+        return 0;
+    }
     case "trace":
     {
         var matchup = Get("matchup", "aggro:wall").Split(':');

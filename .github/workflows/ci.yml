@@ -17,10 +17,12 @@ jobs:
       - run: dotnet build -c Release
       - run: dotnet test -c Release --no-build
 
-  # D7: same duels must hash identically on every OS. A mismatch here is a
-  # determinism regression and blocks merge like any test failure.
+  # D7: same duels must hash identically on every OS. Each leg regenerates the
+  # integer state hashes and asserts them against the committed golden — a
+  # determinism regression (or cross-OS drift) fails the leg. No artifact storage.
   cross-os-determinism:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
@@ -29,21 +31,15 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
-      - run: dotnet run -c Release --project src/Conduit.SimHarness -- run --duels 50 --matchup aggro:wall --seed-base 42 --out results.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: determinism-${{ matrix.os }}
-          path: results.json
-
-  compare-os-results:
-    needs: cross-os-determinism
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-      - name: All OS results must be byte-identical
+      - name: Hashes must match the committed golden
+        shell: bash
         run: |
-          sha256sum determinism-*/results.json
-          test "$(sha256sum determinism-*/results.json | awk '{print $1}' | sort -u | wc -l)" -eq 1
+          dotnet run -c Release --project src/Conduit.SimHarness -- hashes --duels 50 --matchup aggro:wall --seed-base 42 > got.txt
+          if ! diff -u ci/determinism-golden.txt got.txt; then
+            echo "::error::determinism drift on ${{ matrix.os }} — state hashes differ from golden"
+            exit 1
+          fi
+          echo "determinism OK on ${{ matrix.os }}"
 
   nightly-bands:
     if: github.event_name == 'schedule'
@@ -54,8 +50,6 @@ jobs:
         with:
           dotnet-version: "10.0.x"
       - name: 10k-duel band report (balance §9 — report-only until playtests calibrate)
-        run: dotnet run -c Release --project src/Conduit.SimHarness -- run --duels 10000 --matchup aggro:wall --seed-base 1000 --out nightly.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: nightly-bands
-          path: nightly.json
+        shell: bash
+        run: |
+          dotnet run -c Release --project src/Conduit.SimHarness -- run --duels 10000 --matchup aggro:wall --seed-base 1000 | tee "$GITHUB_STEP_SUMMARY"
