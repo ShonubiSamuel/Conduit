@@ -40,7 +40,7 @@
 | `casting-and-cards.md` | **CANONICAL** | Note: card *faces* are rendered (Option B), see §3 |
 | `deck-progression.md` | **CANONICAL** | |
 | `combat-model.md` | **CANONICAL (combat)** | v0.2 commander/ability-AI model. Supersedes the instant ATK-vs-ATK volley resolution in roadmap/balance §5/spec §6. Economy + pacing targets unaffected |
-| `combat-spec.md` | **DRAFT — awaiting approval** | Implementation spec for combat-model.md: fixed-point positions, spatial hash, ability data model, creature AI, activation pipeline, recall/death, re-derived budget. Replaces m0-m1 spec §6 |
+| `combat-spec.md` | **APPROVED — implemented** | Implementation spec for combat-model.md (fixed-point positions, spatial hash, ability data model, creature AI, activation pipeline, recall/death). §13 items approved; built in the Conduit repo (generic engine + fixtures; balance/positional-blocking deferred). Replaces m0-m1 spec §6 |
 | `voice-architecture.md` | **CANONICAL (voice)** | Supersedes voice-system.md & interaction §1 |
 | `interaction-system.md` | **PARTIAL** | §1 (voice) superseded; §3–§8 current |
 | `card-visibility-engineering.md` | **PARTIAL** | Option B now primary; occlusion analysis = fallback + still-needed hand occlusion |
